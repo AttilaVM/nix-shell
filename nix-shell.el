@@ -1,10 +1,13 @@
-(defvar nix-shell-env-alist)
+(defvar nix-shell-env-alist nil
+	"Storage for variables from loaded nix environments.")
+(defvar nix-shell-env-name-list nil
+	"List of loaded nix environment names.")
 
-(setq nix-shell-env-alist nil)
 ;; Save user environment
 (setq nix-shell-env-alist (acons "user-env"
 			 (acons "PATH" (getenv "PATH") nil)
 			 nix-shell-env-alist))
+(setq nix-shell-env-name-list '("user-env"))
 
 (defun nix-shell/stack-then-activate-env (out-buff env-name)
 	(with-current-buffer out-buff
@@ -16,13 +19,16 @@
 		(let ((path-value (buffer-substring
 											 (region-beginning)
 											 (region-end))))
+			;; Save env
 			(setq nix-shell-env-alist
 						(acons env-name
 									 (acons "PATH" path-value nil)
 									 nix-shell-env-alist))
+			(setq nix-shell-env-name-list
+						(add-to-list 'nix-shell-env-name-list env-name))
+			;; activate env TODO separate
 			(setenv "PATH" path-value)
 			(setq exec-path (s-split ":" path-value)))
-		;; (switch-to-buffer out-buff)
 
 		))
 
@@ -59,7 +65,23 @@
 				 (env-name (f-base expr-dir)))
 		(realize-nix-env expr-file env-name)))
 
+(defun nix-shell-activate-env (candidate)
+	"Activate nix-environment, identitified by CANDIDATE."
+	(let* ((env-definition (assoc candidate nix-shell-env-alist))
+				 (path (a-get "PATH" env-definition)))
+		(setenv "PATH" path)
+		(setq exec-path (s-split ":" path))))
+
+(defun nix-shell-helm-source ()
+	""
+	(helm-build-sync-source "Nix Envs"
+		:candidates
+		(lambda () (copy-sequence nix-shell-env-name-list))
+		:candidate-number-limit 999
+		:nomark t
+		:action '(("Nix Envs" . nix-shell-activate-env))))
+
 (defun nix-shell-choose-env ()
 	(interactive)
-	(helm :sources 'nix-shell-env-alist
+	(helm :sources (nix-shell-helm-source)
 				:buffer "*helm my command*"))
